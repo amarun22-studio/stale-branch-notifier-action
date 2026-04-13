@@ -1,5 +1,10 @@
 # Stale Branch Notifier Action
 
+[![GitHub Marketplace](https://img.shields.io/badge/-Marketplace-24292e?style=flat-square&logo=github)](https://github.com/marketplace/actions/stale-branch-notifier)
+[![GitHub release](https://img.shields.io/github/release/amarun22-studio/stale-branch-notifier-action?style=flat-square)](https://github.com/amarun22-studio/stale-branch-notifier-action/releases)
+[![License MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![Contributions Welcome](https://img.shields.io/badge/Contributions-Welcome-blue?style=flat-square)](CONTRIBUTING.md)
+
 Automatically detect and notify about stale feature branches in your GitHub repository. This GitHub Action identifies inactive branches and creates (or updates) GitHub Issues to notify branch owners to take action.
 
 **By:** [Arunkumar Amarnath](https://github.com/amarun22) (@amarun22)  
