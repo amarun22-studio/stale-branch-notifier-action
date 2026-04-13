@@ -13,6 +13,7 @@ function buildIssueBody({
   mention,
   branches,
   daysInactive,
+  defaultBranch,
   watcherMentions,
   authorInfo,
 }) {
@@ -24,6 +25,18 @@ function buildIssueBody({
         ? branch.openPrs.map((pr) => `[#${pr.number}](${pr.url})`).join(', ')
         : 'None';
       return `| \`${branch.name}\` | \`${branch.sha}\` | ${branch.lastCommitISO} | ${branch.daysSince} days | ${prCell} |`;
+    })
+    .join('\n');
+
+  const diffRows = branches
+    .map((branch) => {
+      if (!branch.diff) {
+        return `| \`${branch.name}\` | — | — | — | — |`;
+      }
+      const { aheadBy, behindBy, changedFiles, additions, deletions, compareUrl } = branch.diff;
+      const filesCell = changedFiles !== null ? `${changedFiles} (+${additions}/-${deletions})` : '—';
+      const diffLink = compareUrl ? `[Compare](${compareUrl})` : '—';
+      return `| \`${branch.name}\` | ${aheadBy} | ${behindBy} | ${filesCell} | ${diffLink} |`;
     })
     .join('\n');
 
@@ -47,6 +60,12 @@ function buildIssueBody({
     '',
     `- Open PRs linked to these stale branches: **${totalOpenPrs}**`,
     `- Branches with open PRs: **${branchesWithOpenPr}/${branches.length}**`,
+    '',
+    `### Diff Summary (vs \`${defaultBranch}\`)`,
+    '',
+    `| Branch | Commits Ahead | Commits Behind | Files Changed | Full Diff |`,
+    `|--------|--------------|----------------|---------------|-----------|`,
+    diffRows,
     '',
     ...(authorInfo ? [authorSection, ''] : []),
     '### Please take **one** of these actions for each branch:',
@@ -107,7 +126,7 @@ async function getOpenPrsForBranch({ github, context, branchName }) {
   }));
 }
 
-async function getStaleBranches({ github, context, cutoff, excludedBranches }) {
+async function getStaleBranches({ github, context, cutoff, excludedBranches, defaultBranch }) {
   const allBranches = await github.paginate(github.rest.repos.listBranches, {
     owner: context.repo.owner,
     repo: context.repo.repo,
@@ -135,6 +154,29 @@ async function getStaleBranches({ github, context, cutoff, excludedBranches }) {
     }
 
     const daysSince = Math.floor((Date.now() - lastCommitDate.getTime()) / 86400000);
+
+    // Fetch diff summary vs the default branch
+    let diff = null;
+    try {
+      const { data: compareData } = await github.rest.repos.compareCommits({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        base: defaultBranch,
+        head: branch.name,
+      });
+      const files = compareData.files || [];
+      diff = {
+        aheadBy: compareData.ahead_by,
+        behindBy: compareData.behind_by,
+        changedFiles: files.length,
+        additions: files.reduce((sum, f) => sum + f.additions, 0),
+        deletions: files.reduce((sum, f) => sum + f.deletions, 0),
+        compareUrl: compareData.html_url,
+      };
+    } catch (err) {
+      console.warn(`⚠️ Could not fetch diff for "${branch.name}": ${err.message}`);
+    }
+
     staleBranches.push({
       name: branch.name,
       sha: branch.commit.sha.slice(0, 7),
@@ -143,6 +185,7 @@ async function getStaleBranches({ github, context, cutoff, excludedBranches }) {
       authorLogin: commitData.author?.login ?? null,
       authorName: commitData.commit.author.name,
       authorEmail: commitData.commit.author.email,
+      diff,
     });
   }
 
@@ -196,6 +239,7 @@ async function createOrUpdateIssue({
   mention,
   branches,
   daysInactive,
+  defaultBranch,
   watcherMentions,
   validLogin,
   authorInfo,
@@ -208,6 +252,7 @@ async function createOrUpdateIssue({
     mention,
     branches,
     daysInactive,
+    defaultBranch,
     watcherMentions,
     authorInfo,
   });
@@ -284,6 +329,248 @@ async function createOrUpdateIssue({
   return { touchedIssue: true };
 }
 
+function extractBranchesFromIssueBody(body) {
+  const matches = [...(body || '').matchAll(/^\| `([^`]+)` \| `[0-9a-f]{7}`/gm)];
+  return matches.map((m) => m[1]);
+}
+
+async function executeDeleteCommand({ github, context, issue, commenter, branchName, defaultBranch, excludedBranches }) {
+  const issueBranches = extractBranchesFromIssueBody(issue.body);
+
+  // Branch must be listed in this issue — prevents deleting unrelated branches
+  if (!issueBranches.includes(branchName)) {
+    await github.rest.issues.createComment({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: issue.number,
+      body: `⛔ @${commenter} — \`${branchName}\` is not listed in this issue. You can only delete branches that appear in the table above.`,
+    });
+    console.warn(`⚠️ Branch "${branchName}" is not in issue #${issue.number} — rejected.`);
+    return;
+  }
+
+  // Policy-protected branch check
+  if (excludedBranches.has(branchName)) {
+    await github.rest.issues.createComment({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: issue.number,
+      body: `🛡️ **Delete blocked by policy** for \`${branchName}\`\n\nThis branch is in the protected exclude list or is the default branch (\`${defaultBranch}\`).`,
+    });
+    console.warn(`⚠️ Branch "${branchName}" is policy-protected — rejected.`);
+    return;
+  }
+
+  // Verify branch exists
+  try {
+    await github.rest.repos.getBranch({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      branch: branchName,
+    });
+  } catch (error) {
+    if (error.status === 404) {
+      await github.rest.issues.createComment({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        issue_number: issue.number,
+        body: `❌ @${commenter} — \`${branchName}\` not found — it may have already been deleted.`,
+      });
+      return;
+    }
+    throw error;
+  }
+
+  // Block deletion if branch has open PRs
+  const { data: openPrs } = await github.rest.pulls.list({
+    owner: context.repo.owner,
+    repo: context.repo.repo,
+    state: 'open',
+    head: `${context.repo.owner}:${branchName}`,
+    per_page: 10,
+  });
+
+  if (openPrs.length > 0) {
+    const prLinks = openPrs.map((pr) => `[#${pr.number}](${pr.html_url})`).join(', ');
+    await github.rest.issues.createComment({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: issue.number,
+      body: `⚠️ **Cannot delete** \`${branchName}\` — it has open pull request(s): ${prLinks}\n\nPlease close or merge the PR(s) first.`,
+    });
+    console.warn(`⚠️ Branch "${branchName}" has open PRs — rejected.`);
+    return;
+  }
+
+  // Delete the branch
+  try {
+    await github.rest.git.deleteRef({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      ref: `heads/${branchName}`,
+    });
+    console.log(`✓ Deleted branch: ${branchName}`);
+  } catch (error) {
+    let errorMsg = `❌ **Failed to delete** \`${branchName}\``;
+    if (error.status === 404) {
+      errorMsg += `\n\nBranch not found — it may have already been deleted.`;
+    } else if (error.message?.includes('protected')) {
+      errorMsg += `\n\nBranch is protected and cannot be deleted via API.`;
+    } else {
+      errorMsg += `\n\nError: ${error.message}`;
+    }
+    await github.rest.issues.createComment({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: issue.number,
+      body: errorMsg,
+    });
+    console.error(`❌ Failed to delete branch "${branchName}": ${error.message}`);
+    return;
+  }
+
+  // Check whether any branches from this issue are still alive
+  const remainingBranches = [];
+  for (const b of issueBranches) {
+    if (b === branchName) continue;
+    try {
+      await github.rest.git.getRef({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        ref: `heads/${b}`,
+      });
+      remainingBranches.push(b);
+    } catch (err) {
+      if (err.status !== 404) throw err;
+      // already gone — treated as resolved
+    }
+  }
+
+  if (remainingBranches.length > 0) {
+    await github.rest.issues.createComment({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: issue.number,
+      body: [
+        `✅ **Branch deleted** \`${branchName}\``,
+        '',
+        `The following branch${remainingBranches.length > 1 ? 'es' : ''} in this issue still need attention:`,
+        ...remainingBranches.map((b) => `- \`${b}\``),
+        '',
+        `_Deleted by @${commenter} via IssueOps_`,
+      ].join('\n'),
+    });
+    console.log(`Issue #${issue.number} kept open — ${remainingBranches.length} branch(es) still listed.`);
+  } else {
+    await github.rest.issues.createComment({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: issue.number,
+      body: [
+        `✅ **Branch deleted** \`${branchName}\``,
+        '',
+        'All branches listed in this issue have been resolved. Closing automatically.',
+        '',
+        `_Deleted by @${commenter} via IssueOps_`,
+      ].join('\n'),
+    });
+    await github.rest.issues.update({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: issue.number,
+      state: 'closed',
+      state_reason: 'completed',
+    });
+    console.log(`✓ Issue #${issue.number} closed — no remaining branches.`);
+  }
+}
+
+async function handleIssueOpsCommand({ github, context, core, inputs, repoVars }) {
+  const payload = context.payload;
+  const issue = payload.issue;
+  const comment = payload.comment;
+
+  // Skip PR comments — issue_comment fires for both issues and PRs
+  if (issue.pull_request) {
+    return;
+  }
+
+  // Only act on stale-branch issues
+  const labels = (issue.labels || []).map((l) => l.name);
+  if (!labels.includes('stale-branch')) {
+    return;
+  }
+
+  const commentBody = comment.body.trim();
+  const commenter = comment.user.login;
+
+  // Parse /delete-branch command
+  const deleteMatch = commentBody.match(/^\/delete-branch\s+(\S+)$/i);
+
+  if (!deleteMatch) {
+    return;
+  }
+
+  // ── Build allowed users: issue assignees + configured watchers ──
+  const assigneeLogins = (issue.assignees || []).map((a) => a.login);
+  const watchers = parseCsv(repoVars.watchers || inputs.watchers);
+  const allowedUsers = new Set([...assigneeLogins, ...watchers]);
+
+  // ── Build policy-protected branches: default branch + excluded_branches ──
+  const defaultBranch = context.payload.repository?.default_branch || 'main';
+  const excludedBranches = new Set([
+    defaultBranch,
+    ...parseCsv(repoVars.excludedBranches || inputs.excludedBranches),
+  ]);
+
+  console.log(`Commenter: @${commenter}`);
+  console.log(`Allowed users (assignees + watchers): [${Array.from(allowedUsers).join(', ')}]`);
+  console.log(`Policy-protected branches: [${Array.from(excludedBranches).join(', ')}]`);
+
+  // ── Permission check: allowed user OR write/maintain/admin collaborator ──
+  let hasRepoWriteAccess = false;
+  try {
+    const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      username: commenter,
+    });
+    hasRepoWriteAccess = ['admin', 'maintain', 'write'].includes(data.permission);
+    console.log(`Permission level for @${commenter}: ${data.permission}`);
+  } catch (error) {
+    if (error.status !== 404) {
+      throw error;
+    }
+    console.warn(`⚠️ @${commenter} is not a collaborator.`);
+  }
+
+  if (!allowedUsers.has(commenter) && !hasRepoWriteAccess) {
+    await github.rest.issues.createComment({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: issue.number,
+      body: `❌ **Permission denied** @${commenter}. Allowed users are the issue assignee, configured watchers, or collaborators with write/maintain/admin access.`,
+    });
+    console.warn(`⚠️ @${commenter} does not have permission — command rejected.`);
+    return;
+  }
+
+  // ── Dispatch ──
+  await executeDeleteCommand({
+    github,
+    context,
+    issue,
+    commenter,
+    branchName: deleteMatch[1],
+    defaultBranch,
+    excludedBranches,
+  });
+
+  core.setOutput('stale_count', '0');
+  core.setOutput('issues_count', '0');
+  core.setOutput('auto_closed_count', '0');
+}
+
 async function reconcileIssues({ github, context, dryRun, currentDisplayNames, openStaleIssues }) {
   let autoClosedCount = 0;
 
@@ -343,6 +630,10 @@ async function reconcileIssues({ github, context, dryRun, currentDisplayNames, o
 }
 
 module.exports = async function runNotifier({ github, context, core, inputs, repoVars = {} }) {
+  if (context.eventName === 'issue_comment') {
+    return handleIssueOpsCommand({ github, context, core, inputs, repoVars });
+  }
+
   await ensureLabel({ github, context });
 
   const rawDaysInactive = repoVars.daysInactive || inputs.daysInactive || '15';
@@ -372,7 +663,7 @@ module.exports = async function runNotifier({ github, context, core, inputs, rep
   console.log(`Excluded branches: [${Array.from(excludedBranches).join(', ')}]`);
   console.log(`Stale cutoff date: ${cutoff.toISOString().split('T')[0]}`);
 
-  const staleBranches = await getStaleBranches({ github, context, cutoff, excludedBranches });
+  const staleBranches = await getStaleBranches({ github, context, cutoff, excludedBranches, defaultBranch });
   console.log(`Stale branches (inactive ${daysInactive}+ days): ${staleBranches.length}`);
   if (staleBranches.length === 0) {
     console.log('✅ No stale branches detected in this run. Will reconcile open stale issues.');
@@ -428,6 +719,7 @@ module.exports = async function runNotifier({ github, context, core, inputs, rep
         mention,
         branches: author.branches,
         daysInactive,
+        defaultBranch,
         watcherMentions,
         validLogin,
         authorInfo,

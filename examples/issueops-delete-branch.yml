@@ -1,0 +1,51 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# IssueOps: Manage stale branches directly from GitHub Issue comments
+# Optional workflow: only needed if you want comment-driven branch deletion
+#
+# Drop this file into your repository at:
+#   .github/workflows/stale-branch-issueops.yml
+#
+# Supported command (comment on a stale-branch issue):
+#   /delete-branch <branch-name>  — delete the branch (with safety checks)
+#
+# Who can run these commands:
+#   - The issue assignee (the branch owner)
+#   - Configured watchers (STALE_BRANCH_NOTIFIER_WATCHERS repo variable)
+#   - Any collaborator with write, maintain, or admin access
+#
+# Safety checks for /delete-branch:
+#   - Branch must be listed in the issue's table (no unrelated deletions)
+#   - Branch must not be the default branch or in the excluded list
+#   - Branch must not have open pull requests
+#
+# On success:
+#   - A confirmation comment is posted
+#   - If all branches in the issue are resolved, the issue is automatically closed
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Stale Branch IssueOps
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write       # delete branches
+  issues: write         # post comments and close issues
+  pull-requests: read   # check for open PRs before deletion
+
+jobs:
+  handle-command:
+    runs-on: ubuntu-latest
+
+    # Only run for recognized commands on issues (not PRs)
+    if: |
+      !github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/delete-branch')
+
+    steps:
+      - name: Handle IssueOps command
+        uses: amarun22-studio/stale-branch-notifier-action@v1
+        with:
+          watchers:          ${{ vars.STALE_BRANCH_NOTIFIER_WATCHERS || '' }}
+          excluded_branches: ${{ vars.STALE_BRANCH_NOTIFIER_EXCLUDED_BRANCHES || '' }}

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Optional IssueOps `/delete-branch <branch>` command: delete a stale branch from an issue comment with full safety checks (branch must be in issue table, not policy-protected, no open PRs)
+- Diff summary baked into every stale-branch issue at creation time: commits ahead/behind the default branch, files changed (+additions/-deletions), and a link to the full diff on GitHub — no command needed
+- Permission model: issue assignee, configured watchers (`STALE_BRANCH_NOTIFIER_WATCHERS`), and collaborators with write/maintain/admin access are authorized; all others are rejected with a comment
+- Policy protection: default branch and `excluded_branches` list cannot be deleted via IssueOps
+- Remaining-branch awareness: issue stays open if other branches from the same issue are still alive; closes automatically only when all are resolved
+- New example workflow `examples/issueops-delete-branch.yml` for the `issue_comment` trigger with `pull-requests: read` permission
+
+### Changed
+- README wording now explicitly frames IssueOps delete as optional, and the sample issue content now includes the default diff summary section
+
 ## [1.0.2] — 2026-04-13
 
 ### Added
