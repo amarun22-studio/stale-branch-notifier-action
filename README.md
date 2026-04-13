@@ -23,7 +23,7 @@ This self-contained action scans all branches in your repository, identifies tho
 - ✅ Dry-run mode for safe testing
 - ✅ Exclude specific branches by policy
 - ✅ PR metadata in issue body
-- ✅ IssueOps: delete branches directly from an issue comment
+- ✅ Optional IssueOps: delete branches directly from an issue comment
 - ✅ Diff summary (ahead/behind, files changed) included in every issue automatically
 - ✅ No dependency on private repositories
 
@@ -214,6 +214,13 @@ no commits for 15+ days and need attention:
 |--------|-------------|--------------|-----------|
 | feature/login-redesign | 2026-03-18 | 23 days | #421 |
 | feat/api-v2 | 2026-03-12 | 29 days | None |
+
+### Diff Summary (vs `main`)
+
+| Branch | Commits Ahead | Commits Behind | Files Changed | Full Diff |
+|--------|---------------|----------------|---------------|-----------|
+| feature/login-redesign | 12 | 3 | 9 (+214/-67) | Compare |
+| feat/api-v2 | 4 | 18 | 3 (+42/-11) | Compare |
 
 ### Please take one of these actions for each branch:
 - 🔨 Push new commits (work in progress)

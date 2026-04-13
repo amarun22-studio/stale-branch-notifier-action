@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remaining-branch awareness: issue stays open if other branches from the same issue are still alive; closes automatically only when all are resolved
 - New example workflow `examples/issueops-delete-branch.yml` for the `issue_comment` trigger with `pull-requests: read` permission
 
+### Changed
+- README wording now explicitly frames IssueOps delete as optional, and the sample issue content now includes the default diff summary section
+
 ## [1.0.2] — 2026-04-13
 
 ### Added
