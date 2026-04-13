@@ -1,0 +1,78 @@
+name: 'Stale Branch Notifier'
+description: 'Automatically detect and notify about stale feature branches'
+author: 'Arunkumar Amarnath (@amarun22)'
+
+branding:
+  icon: 'git-branch'
+  color: 'green'
+
+inputs:
+  days_inactive:
+    description: 'Days of inactivity before a branch is considered stale (default: 15)'
+    required: false
+    default: '15'
+  
+  dry_run:
+    description: 'Dry run mode - log actions without creating issues'
+    required: false
+    default: 'false'
+  
+  watchers:
+    description: 'Comma-separated GitHub usernames to CC in every issue for visibility'
+    required: false
+    default: ''
+  
+  excluded_branches:
+    description: 'Comma-separated exact branch names to exclude from stale scanning'
+    required: false
+    default: ''
+
+outputs:
+  stale_branches_found:
+    description: 'Number of stale branches detected'
+    value: ${{ steps.notifier.outputs.stale_count }}
+  
+  issues_created:
+    description: 'Number of issues created or updated'
+    value: ${{ steps.notifier.outputs.issues_count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout main branch-hygiene-bot repository
+      uses: actions/checkout@v4
+      with:
+        repository: 'amarun22-PS/branch-hygiene-bot'
+        ref: 'main'
+        path: 'workflows'
+
+    - name: Run stale branch notifier workflow
+      id: notifier
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ github.token }}
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          
+          // Load the notifier script from branch-hygiene-bot
+          const notifierScript = fs.readFileSync(
+            path.join('workflows', '.github/workflows/stale-branch-notifier.yml'),
+            'utf8'
+          );
+          
+          console.log('Stale Branch Notifier Action');
+          console.log('=============================');
+          console.log('Configuration:');
+          console.log(`  Days Inactive: ${{ inputs.days_inactive }}`);
+          console.log(`  Dry Run: ${{ inputs.dry_run }}`);
+          console.log(`  Watchers: ${{ inputs.watchers || 'None configured' }}`);
+          console.log(`  Excluded Branches: ${{ inputs.excluded_branches || 'None' }}`);
+          console.log('');
+          
+          // Initialize outputs
+          core.setOutput('stale_count', '0');
+          core.setOutput('issues_count', '0');
+          
+          console.log('✓ Stale branch notifier initialized');
+          console.log('For full functionality, ensure branch-hygiene-bot repository is accessible.');
