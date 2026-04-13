@@ -287,11 +287,10 @@ Add these to your workflow or job-level permissions.
 
 Found a bug? Have a feature request? Issues and pull requests are welcome!
 
-Visit the [main repository](https://github.com/amarun22-PS/branch-hygiene-bot) for:
+Visit the [GitHub repository](https://github.com/amarun22-studio/stale-branch-notifier-action) for:
 - Issue tracking
-- Detailed contribution guidelines
-- Development setup
-- Test cases and documentation
+- Pull request guidelines
+- Bug reports and feature requests
 
 ---
 
@@ -303,10 +302,9 @@ MIT - see [LICENSE](LICENSE) file
 
 ## Support
 
-For detailed documentation, test cases, and advanced usage, visit:
-- **Main Repository:** https://github.com/amarun22-PS/branch-hygiene-bot
-- **Sandbox Testing:** https://github.com/amarun22/branch-hygiene-bot-sandbox
+For questions, issues, or feature requests:
 - **GitHub:** [@amarun22](https://github.com/amarun22)
+- **Issues:** [Open an issue](https://github.com/amarun22-studio/stale-branch-notifier-action/issues)
 
 ---
 
