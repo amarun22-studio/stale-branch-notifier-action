@@ -1,0 +1,5 @@
+# GitHub Codeowners - designates required reviewers for code changes
+# More info: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Everyone and anyone who changes files in this repository must get approval from:
+*   @amarun22

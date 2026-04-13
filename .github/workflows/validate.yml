@@ -1,0 +1,74 @@
+name: Validate Action
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - action.yml
+      - src/**
+      - .github/workflows/validate.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - action.yml
+      - src/**
+      - .github/workflows/validate.yml
+
+jobs:
+  validate-action:
+    name: Validate action.yml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate action.yml syntax
+        run: |
+          if [ ! -f "action.yml" ]; then
+            echo "❌ action.yml not found"
+            exit 1
+          fi
+          
+          # Check YAML syntax using nodejs
+          node << 'EOF'
+          const fs = require('fs');
+          const yaml = require('js-yaml');
+          
+          try {
+            const content = fs.readFileSync('action.yml', 'utf8');
+            const action = yaml.load(content);
+            
+            // Validate required fields
+            if (!action.name) throw new Error('Missing required field: name');
+            if (!action.runs) throw new Error('Missing required field: runs');
+            if (!action.runs.using) throw new Error('Missing required field: runs.using');
+            
+            console.log('✓ action.yml is valid');
+            console.log(`  Name: ${action.name}`);
+            console.log(`  Using: ${action.runs.using}`);
+            
+            if (action.inputs) {
+              console.log(`  Inputs: ${Object.keys(action.inputs).length}`);
+            }
+            if (action.outputs) {
+              console.log(`  Outputs: ${Object.keys(action.outputs).length}`);
+            }
+          } catch (error) {
+            console.error('❌ Invalid action.yml:', error.message);
+            process.exit(1);
+          }
+          EOF
+
+      - name: Validate src/notifier.js exists
+        run: |
+          if [ ! -f "src/notifier.js" ]; then
+            echo "❌ src/notifier.js not found"
+            exit 1
+          fi
+          echo "✓ src/notifier.js found"
+
+      - name: Check Node.js syntax in src/notifier.js
+        run: |
+          node -c src/notifier.js && echo "✓ src/notifier.js syntax valid"
+
+      - name: ✅ All validations passed
+        run: echo "Action is valid and ready to use"
