@@ -36,43 +36,28 @@ outputs:
     description: 'Number of issues created or updated'
     value: ${{ steps.notifier.outputs.issues_count }}
 
+  issues_auto_closed:
+    description: 'Number of stale issues auto-closed during reconciliation'
+    value: ${{ steps.notifier.outputs.auto_closed_count }}
+
 runs:
   using: 'composite'
   steps:
-    - name: Checkout main branch-hygiene-bot repository
-      uses: actions/checkout@v4
-      with:
-        repository: 'amarun22-PS/branch-hygiene-bot'
-        ref: 'main'
-        path: 'workflows'
-
-    - name: Run stale branch notifier workflow
+    - name: Run stale branch notifier
       id: notifier
       uses: actions/github-script@v7
       with:
         github-token: ${{ github.token }}
         script: |
-          const fs = require('fs');
-          const path = require('path');
-          
-          // Load the notifier script from branch-hygiene-bot
-          const notifierScript = fs.readFileSync(
-            path.join('workflows', '.github/workflows/stale-branch-notifier.yml'),
-            'utf8'
-          );
-          
-          console.log('Stale Branch Notifier Action');
-          console.log('=============================');
-          console.log('Configuration:');
-          console.log(`  Days Inactive: ${{ inputs.days_inactive }}`);
-          console.log(`  Dry Run: ${{ inputs.dry_run }}`);
-          console.log(`  Watchers: ${{ inputs.watchers || 'None configured' }}`);
-          console.log(`  Excluded Branches: ${{ inputs.excluded_branches || 'None' }}`);
-          console.log('');
-          
-          // Initialize outputs
-          core.setOutput('stale_count', '0');
-          core.setOutput('issues_count', '0');
-          
-          console.log('✓ Stale branch notifier initialized');
-          console.log('For full functionality, ensure branch-hygiene-bot repository is accessible.');
+          const runNotifier = require(`${process.env.GITHUB_ACTION_PATH}/src/notifier.js`);
+          await runNotifier({
+            github,
+            context,
+            core,
+            inputs: {
+              daysInactive: `${{ inputs.days_inactive }}`,
+              dryRun: `${{ inputs.dry_run }}`,
+              watchers: `${{ inputs.watchers }}`,
+              excludedBranches: `${{ inputs.excluded_branches }}`,
+            },
+          });
