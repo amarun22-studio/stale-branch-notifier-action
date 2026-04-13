@@ -352,6 +352,26 @@ Check the workflow logs to see what would happen.
 
 ---
 
+## Maintainer: Manual Release
+
+This repository includes a manual-only release workflow at [`.github/workflows/release-manual.yml`](.github/workflows/release-manual.yml).
+
+Use it from **Actions -> Manual Release -> Run workflow** (on `main`) with:
+
+- `version`: SemVer value like `1.2.0` or `v1.2.0`
+- `update_major_tag`: when true, moves the major tag (for example, `v1`) to this release
+- `dry_run`: validates and prepares tags without pushing or creating a release
+
+What it automates:
+
+1. Validates version input format
+2. Ensures workflow is run from the default branch
+3. Creates the new version tag (for example, `v1.2.0`)
+4. Optionally updates the major tag pointer (for example, `v1`)
+5. Pushes tags and creates a GitHub Release with generated notes
+
+---
+
 ## Permissions
 
 This action requires the following permissions:
