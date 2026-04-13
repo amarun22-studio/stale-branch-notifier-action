@@ -1,0 +1,127 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. 1.2.0 or v1.2.0)"
+        required: true
+        type: string
+      update_major_tag:
+        description: "Also move the major tag (e.g. v1 -> this version)"
+        required: true
+        type: boolean
+        default: true
+      dry_run:
+        description: "Show what would happen without pushing tags or creating release"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "Guardrail: run from default branch only"
+        run: |
+          set -euo pipefail
+          DEFAULT_BRANCH='${{ github.event.repository.default_branch }}'
+          if [[ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" ]]; then
+            echo "❌ Run this workflow from ${DEFAULT_BRANCH}. Current ref: ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+          echo "✓ Running from default branch: ${DEFAULT_BRANCH}"
+
+      - name: Resolve release metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          RAW='${{ github.event.inputs.version }}'
+          if [[ ! "${RAW}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Invalid version: ${RAW}. Use SemVer like 1.2.0 or v1.2.0"
+            exit 1
+          fi
+
+          if [[ "${RAW}" == v* ]]; then
+            TAG="${RAW}"
+          else
+            TAG="v${RAW}"
+          fi
+
+          MAJOR="v$(echo "${TAG}" | sed -E 's/^v([0-9]+)\..*$/\1/')"
+          TARGET_SHA="${GITHUB_SHA}"
+
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "major=${MAJOR}" >> "${GITHUB_OUTPUT}"
+          echo "target_sha=${TARGET_SHA}" >> "${GITHUB_OUTPUT}"
+
+          echo "Resolved tag: ${TAG}"
+          echo "Major tag: ${MAJOR}"
+          echo "Target SHA: ${TARGET_SHA}"
+
+      - name: Ensure tag does not already exist
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.meta.outputs.tag }}'
+          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q "refs/tags/${TAG}$"; then
+            echo "❌ Tag ${TAG} already exists on origin"
+            exit 1
+          fi
+          echo "✓ Tag ${TAG} is available"
+
+      - name: Create local release tags
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.meta.outputs.tag }}'
+          MAJOR='${{ steps.meta.outputs.major }}'
+          TARGET_SHA='${{ steps.meta.outputs.target_sha }}'
+
+          git tag -a "${TAG}" "${TARGET_SHA}" -m "Release ${TAG}"
+          echo "✓ Created ${TAG} -> ${TARGET_SHA}"
+
+          if [[ '${{ github.event.inputs.update_major_tag }}' == 'true' ]]; then
+            git tag -fa "${MAJOR}" "${TARGET_SHA}" -m "Update ${MAJOR} to ${TAG}"
+            echo "✓ Updated ${MAJOR} -> ${TARGET_SHA}"
+          else
+            echo "ℹ️ Skipped major tag update"
+          fi
+
+      - name: Stop on dry run
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        run: |
+          echo "🧪 Dry run complete. No tags pushed and no release created."
+
+      - name: Push tags to origin
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.meta.outputs.tag }}'
+          MAJOR='${{ steps.meta.outputs.major }}'
+
+          git push origin "${TAG}"
+          echo "✓ Pushed ${TAG}"
+
+          if [[ '${{ github.event.inputs.update_major_tag }}' == 'true' ]]; then
+            git push origin "${MAJOR}" --force
+            echo "✓ Force-pushed ${MAJOR}"
+          fi
+
+      - name: Create GitHub release
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.meta.outputs.tag }}'
+          gh release create "${TAG}" \
+            --title "${TAG}" \
+            --generate-notes
+          echo "✓ Created release ${TAG}"

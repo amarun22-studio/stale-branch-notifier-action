@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Manual-only release workflow `.github/workflows/release-manual.yml` to automate version tag creation, optional major-tag updates, and GitHub release publishing via `workflow_dispatch`
 - Optional IssueOps `/delete-branch <branch>` command: delete a stale branch from an issue comment with full safety checks (branch must be in issue table, not policy-protected, no open PRs)
 - Diff summary baked into every stale-branch issue at creation time: commits ahead/behind the default branch, files changed (+additions/-deletions), and a link to the full diff on GitHub — no command needed
 - Permission model: issue assignee, configured watchers (`STALE_BRANCH_NOTIFIER_WATCHERS`), and collaborators with write/maintain/admin access are authorized; all others are rejected with a comment
