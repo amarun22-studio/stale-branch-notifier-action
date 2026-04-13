@@ -1,0 +1,29 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Basic: Run stale branch check on a weekly schedule
+#
+# Drop this file into your repository at:
+#   .github/workflows/stale-branch-check.yml
+#
+# Scans all branches weekly and creates GitHub Issues for stale ones.
+# main branch is always excluded. See README for all configuration options.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Stale Branch Check
+
+on:
+  schedule:
+    - cron: '0 9 * * 0'  # Every Sunday at 09:00 UTC
+  workflow_dispatch:      # Enable manual trigger from Actions tab
+
+permissions:
+  contents: read          # read branches / commits
+  issues: write           # create / update issues and labels
+  pull-requests: read     # read open PRs linked to stale branches
+
+jobs:
+  check-stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amarun22-studio/stale-branch-notifier-action@v1
+        with:
+          days_inactive: 15

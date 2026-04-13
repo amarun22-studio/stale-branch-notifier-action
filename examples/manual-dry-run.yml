@@ -1,0 +1,60 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Manual dry-run workflow for testing and first-time setup
+#
+# Drop this file into your repository at:
+#   .github/workflows/stale-branch-dry-run.yml
+#
+# Use this before enabling the scheduled check to preview what the action
+# would flag — without creating any GitHub Issues.
+#
+# After reviewing the dry-run output, remove or disable this workflow and
+# switch to basic-schedule.yml (or advanced-with-variables.yml).
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Stale Branch Dry Run (Preview)
+
+on:
+  workflow_dispatch:
+    inputs:
+      days_inactive:
+        description: 'Days of inactivity before a branch is considered stale'
+        required: false
+        default: '15'
+      watchers:
+        description: 'Comma-separated GitHub usernames to CC (no @ prefix, optional)'
+        required: false
+      excluded_branches:
+        description: 'Comma-separated branch names to exclude from scanning (optional)'
+        required: false
+
+permissions:
+  contents: read          # read branches / commits
+  issues: write           # required even in dry-run (label creation check)
+  pull-requests: read     # read open PRs linked to stale branches
+
+jobs:
+  dry-run-preview:
+    name: Preview stale branches (no issues created)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run Stale Branch Notifier (DRY RUN)
+        id: notifier
+        uses: amarun22-studio/stale-branch-notifier-action@v1
+        with:
+          days_inactive:     ${{ github.event.inputs.days_inactive || '15' }}
+          dry_run:           'true'   # Always dry-run in this workflow
+          watchers:          ${{ github.event.inputs.watchers || '' }}
+          excluded_branches: ${{ github.event.inputs.excluded_branches || '' }}
+
+      - name: Dry Run Summary
+        run: |
+          echo "### 🔍 Dry Run Preview Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No issues were created. This was a preview only." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Stale branches detected | ${{ steps.notifier.outputs.stale_count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> To enable live notifications, switch to [basic-schedule.yml](../examples/basic-schedule.yml)." >> $GITHUB_STEP_SUMMARY

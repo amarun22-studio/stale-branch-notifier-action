@@ -1,0 +1,67 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Advanced: Full configuration with repo variables, watchers, and exclusions
+#
+# Drop this file into your repository at:
+#   .github/workflows/stale-branch-check.yml
+#
+# Configuration via repository variables (Settings → Secrets and variables
+# → Variables → Repository variables):
+#
+#   STALE_BRANCH_NOTIFIER_DAYS_INACTIVE   = 20
+#   STALE_BRANCH_NOTIFIER_WATCHERS        = alice,bob
+#   STALE_BRANCH_NOTIFIER_EXCLUDED_BRANCHES = release,hotfix/current
+#
+# Inputs passed at dispatch time override repo variables.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Stale Branch Check (Advanced)
+
+on:
+  schedule:
+    - cron: '0 9 * * 0'  # Every Sunday at 09:00 UTC
+  workflow_dispatch:
+    inputs:
+      days_inactive:
+        description: 'Days of inactivity before a branch is considered stale'
+        required: false
+        default: '15'
+      dry_run:
+        description: 'Dry run — log actions but do NOT create or update issues'
+        required: false
+        default: false
+        type: boolean
+      watchers:
+        description: 'Comma-separated GitHub usernames to CC in every issue (no @ prefix)'
+        required: false
+      excluded_branches:
+        description: 'Comma-separated branch names to exclude from scanning'
+        required: false
+
+permissions:
+  contents: read          # read branches / commits
+  issues: write           # create / update issues and labels
+  pull-requests: read     # read open PRs linked to stale branches
+
+jobs:
+  check-stale:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run Stale Branch Notifier
+        id: notifier
+        uses: amarun22-studio/stale-branch-notifier-action@v1
+        with:
+          # Repo variable takes precedence; workflow input used as fallback
+          days_inactive: ${{ github.event.inputs.days_inactive || vars.STALE_BRANCH_NOTIFIER_DAYS_INACTIVE || '15' }}
+          dry_run:       ${{ github.event.inputs.dry_run || 'false' }}
+          watchers:      ${{ github.event.inputs.watchers || vars.STALE_BRANCH_NOTIFIER_WATCHERS || '' }}
+          excluded_branches: ${{ github.event.inputs.excluded_branches || vars.STALE_BRANCH_NOTIFIER_EXCLUDED_BRANCHES || '' }}
+
+      - name: Summary
+        run: |
+          echo "### Stale Branch Notifier Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Stale branches found | ${{ steps.notifier.outputs.stale_count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Issues created/updated | ${{ steps.notifier.outputs.issues_count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Issues auto-closed | ${{ steps.notifier.outputs.auto_closed_count }} |" >> $GITHUB_STEP_SUMMARY
