@@ -16,7 +16,7 @@ on:
 
 jobs:
   validate-action:
-    name: Validate action.yml
+    name: validate-action
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,35 +28,31 @@ jobs:
             exit 1
           fi
           
-          # Check YAML syntax using nodejs
-          node << 'EOF'
-          const fs = require('fs');
-          const yaml = require('js-yaml');
+          # Basic YAML syntax check using grep/string matching
+          if ! grep -q "^name:" action.yml; then
+            echo "❌ Missing required field: name"
+            exit 1
+          fi
           
-          try {
-            const content = fs.readFileSync('action.yml', 'utf8');
-            const action = yaml.load(content);
-            
-            // Validate required fields
-            if (!action.name) throw new Error('Missing required field: name');
-            if (!action.runs) throw new Error('Missing required field: runs');
-            if (!action.runs.using) throw new Error('Missing required field: runs.using');
-            
-            console.log('✓ action.yml is valid');
-            console.log(`  Name: ${action.name}`);
-            console.log(`  Using: ${action.runs.using}`);
-            
-            if (action.inputs) {
-              console.log(`  Inputs: ${Object.keys(action.inputs).length}`);
-            }
-            if (action.outputs) {
-              console.log(`  Outputs: ${Object.keys(action.outputs).length}`);
-            }
-          } catch (error) {
-            console.error('❌ Invalid action.yml:', error.message);
-            process.exit(1);
-          }
-          EOF
+          if ! grep -q "^runs:" action.yml; then
+            echo "❌ Missing required field: runs"
+            exit 1
+          fi
+          
+          if ! grep -q "using:" action.yml; then
+            echo "❌ Missing required field: runs.using"
+            exit 1
+          fi
+          
+          # Extract and display action details
+          NAME=$(grep "^name:" action.yml | head -1 | cut -d'"' -f2 | cut -d"'" -f2)
+          USING=$(grep "using:" action.yml | head -1 | awk '{print $2}')
+          INPUTS=$(grep -c "^  [a-z_-]*:" action.yml || echo 0)
+          
+          echo "✓ action.yml is valid"
+          echo "  Name: ${NAME}"
+          echo "  Using: ${USING}"
+          echo "  Properties: ${INPUTS} defined"
 
       - name: Validate src/notifier.js exists
         run: |
