@@ -20,6 +20,50 @@ This self-contained action scans all branches in your repository, identifies tho
 - ✅ PR metadata in issue body
 - ✅ No dependency on private repositories
 
+Best for:
+
+- repositories that want a lightweight stale-branch policy without a separate app
+- teams that want issue-based follow-up instead of immediate branch deletion
+- scheduled hygiene checks that still support safe manual dry runs
+
+---
+
+## Quick Start
+
+Add this action to a scheduled workflow and grant the required permissions:
+
+```yaml
+name: Stale Branch Check
+
+on:
+  schedule:
+    - cron: '0 9 * * 0'
+  workflow_dispatch:
+
+jobs:
+  stale-branches:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - uses: amarun22-studio/stale-branch-notifier-action@v1
+        with:
+          days_inactive: 15
+          dry_run: 'false'
+```
+
+If you want centralized configuration, pass repository variables into the inputs.
+
+---
+
+## Requirements
+
+- Issues must be enabled in the target repository.
+- The workflow job must grant `contents: read`, `issues: write`, and `pull-requests: read`.
+- The action runs with the caller repository token, so it works for repositories where the workflow itself has access.
+
 ---
 
 ## Usage
